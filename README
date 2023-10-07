@@ -1,0 +1,45 @@
+simulate: 
+
+	sim_electrons.py – Create new 10 TeV electrons in the IceCube detector space. Random position, direction in FTP-V2 ice.
+
+	submit_electron_jobs.sh – Submit large batches of short simulation jobs to the scavenger node. 
+
+train:
+
+	create_tf_records.py – Convert our hdf5 files to streamable TensorFlow records. 
+
+	submit_tfrecord_jobs.sh – Submit jobs to write tfrecords. 
+
+	train_generator.py – Read from TF records, train neural network as function of number of local layers, convolutional layers, and number of filters in either type. 
+
+	submit_train_generator.sh – Submit training job to GPU for different model configs. 
+
+	om_position_array.npy – File containing the position of optical modules. 
+
+reconstruct:
+
+	simulate_events.py – Simulate electron neutrinos or muons in-ice. 
+
+	submit_event_simulations.sh – Submit the event simulations. 
+
+	event_reconstruction_millipede_varauto.py – Reconstruct tracks with variational autoencoder reference. 
+
+	event_reconstruction_millipede_table.py – Reconstruct tracks with table reference. 
+
+	event_reconstruction_monopod_varauto.py – Reconstruct cascades with variational autoencoder reference. 
+
+	event_reconstruction_monopod_table.py – Reconstruct cascades with variational table reference. 
+
+	submit_reconstructions.sh – Submit our reconstructions. 
+
+	plot_cnn_comparisons.py - Comparisons between a list of different architectures. 
+
+	plot_cnn_spline_comparisons.py – Comparisons between the best architecture and splines. 
+
+	get_dom_timing_statistics.py – Information on timing predictions for the best architecture. 
+
+	plot_dom_timing_statistics.py – Plot information on timing predictions for the best architecture. 
+
+	submit_plots.sh – Jobs for plotting. 
+
+	plots – Directory for final-level plots. 
