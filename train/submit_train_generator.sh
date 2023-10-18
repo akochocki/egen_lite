@@ -1,3 +1,5 @@
+#!/bin/bash
+
 module purge
 module load CUDA/11.4.2
 
@@ -8,10 +10,14 @@ eval `/cvmfs/icecube.opensciencegrid.org/py3-v4.1.1/setup.sh`
 PYTHONPATH=/mnt/home/kochocki/prefix/lib64/:$PYTHONPATH
 LD_LIBRARY_PATH=/mnt/home/kochocki/prefix/lib64/:$LD_LIBRARY_PATH
 
+#--gres=gpu:v100:1
+#--gres=gpu:a100:1 
+ 
+sbatch --array=2 -A deyoungbuyin --gres=gpu:1 --gres=gpu:v100:1 --mem=32000 --time=72:00:00 --error=/mnt/home/kochocki/egen_lite/logs/train_model_1_%a.err --output=/mnt/home/kochocki/egen_lite/logs/train_model_1_%a.out /mnt/home/kochocki/egen_lite/train/train_generator_4g.py 'loss_model_ftp_v2_1_3_25_500' 1 3 25 500 # original
 
-sbatch --array=1 -A deyoungbuyin --gres=gpu:1 --mem=28000 --time=72:00:00 --error=/mnt/home/kochocki/egen_lite/logs/train_model_1_%a.err --output=/mnt/home/kochocki/egen_lite/logs/train_model_1_%a.out /mnt/home/kochocki/egen_lite/train/train_generator_4g.py 'loss_model_ftp_v2_1_3_25_500' 1 3 25 500 # original
+sbatch --array=1 -A deyoungbuyin --gres=gpu:1 --gres=gpu:v100:1 --mem=32000 --time=72:00:00 --error=/mnt/home/kochocki/egen_lite/logs/train_model_1_6p_%a.err --output=/mnt/home/kochocki/egen_lite/logs/train_model_1_6p_%a.out /mnt/home/kochocki/egen_lite/train/train_generator_6g.py 'loss_model_ftp_v2_6p_1_3_25_500' 1 3 25 500 # original
 
-sbatch --array=1 -A deyoungbuyin --gres=gpu:1 --mem=28000 --time=72:00:00 --error=/mnt/home/kochocki/egen_lite/logs/train_model_1_6p_%a.err --output=/mnt/home/kochocki/egen_lite/logs/train_model_1_6p_%a.out /mnt/home/kochocki/egen_lite/train/train_generator_6g.py 'loss_model_ftp_v2_6p_1_3_25_500' 1 3 25 500 # original
+
 
 
 #sbatch --array=1 -A deyoungbuyin --gres=gpu:1 --mem=28000 --time=72:00:00 --error=/mnt/home/kochocki/egen_lite/logs/train_model_2_%a.err --output=/mnt/home/kochocki/egen_lite/logs/train_model_2_%a.out /mnt/home/kochocki/egen_lite/train/train_generator_4g.py 'loss_model_ftp_v2_3_9_25_500' 3 9 25 500 # increase depth

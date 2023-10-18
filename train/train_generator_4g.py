@@ -1,3 +1,5 @@
+#!/cvmfs/icecube.opensciencegrid.org/py3-v4.1.1/RHEL_7_x86_64/bin/python3 
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -292,14 +294,23 @@ except:
     generator.compile(optimizer='adam', run_eagerly=False, loss=Unbinned_Pulse_Loss_Ordered()) #run_eagerly=True,
     print('Creating new model.')
     
+def scheduler(epoch, lr):
+    if epoch < 5: # Ideally we saw all data before decreasing, try this later.
+        print('Updating learning rate to:', lr)
+        return lr
+    else:
+        return lr * tf.math.exp(-0.1)
+        print('Updating learning rate to:', lr)
+
     
 callback = tf.keras.callbacks.ModelCheckpoint( model_save_location + model_name + '/checkpoint/cp-{epoch:04d}.ckpt', verbose=1, save_weights_only=True, save_freq='epoch')
 #backup_and_restore = tf.keras.callbacks.BackupAndRestore( model_save_location + model_name + '/checkpoint/cp-{epoch:04d}.ckpt', save_freq='epoch', delete_checkpoint=True,save_before_preemption=False)
+learning_callback = tf.keras.callbacks.LearningRateScheduler(scheduler)
 csv = tf.keras.callbacks.CSVLogger( model_save_location + model_name + '_log.csv', separator=',', append=True)
 generator.save_weights(model_save_location + model_name + '/checkpoint/cp-{epoch:04d}.ckpt'.format(epoch=0))
 
     
-paths = glob.glob('/mnt/scratch/kochocki/ftp_electrons/set_*/' + 'record_2*.tfrecords')
+paths = glob.glob('/mnt/scratch/kochocki/ftp_electrons/set_*/' + 'record_*.tfrecords')
 n_files = len(paths)
 paths_train = []
 paths_validate = []
@@ -312,7 +323,7 @@ for i in range(n_files):
 print(len(paths_validate), " records used for validation.")
 print(len(paths_train), " records used for training.")
 
-batch_size = 100 # This seems to just fit on the MSU HPCC dev node GPUs
+batch_size = 90 # 100 seems to just fit on the MSU HPCC dev node GPUs. Prone to failing
 shuffle_buffer_size = 5 * batch_size
 ds_train = tfrecords_reader_dataset(paths_train, batch_size=batch_size,
                                     shuffle_buffer_size=shuffle_buffer_size,
@@ -321,12 +332,13 @@ ds_test = tfrecords_reader_dataset(paths_validate, batch_size=batch_size,
                                     shuffle_buffer_size=shuffle_buffer_size,
                                     n_readers=16)
 
-
+print('Initial learning rate:', round(generator.optimizer.lr.numpy(), 5) )
 history = generator.fit(ds_train, validation_data=ds_test,
-                epochs=1, #20,
-                steps_per_epoch = 10,#((1400000)//batch_size), # every iteration has batch sized number of events evaluated with loss
-                validation_steps = 10,#((140000)//batch_size), # one real epoch would take half a week on dev node. Here, each epoch is one tenth of a real one. Train for 20 epochs = 1 week
-                callbacks=[callback,csv] )
+                epochs=1, # 20,
+                steps_per_epoch = 100, #((1400000)//(batch_size/10.0)), # every iteration has batch sized number of events evaluated with loss
+                validation_steps = 100, #((140000)//(batch_size/10.0)), # one real epoch would take a week on dev node. Here, each epoch is one fifth of a real one, divide by 10. Train for 20 epochs = 1 week
+                callbacks=[callback,csv,learning_callback] )#factor of ten speed boost on A100, V100.
+print('Final learning rate:', round(generator.optimizer.lr.numpy(), 5) )
 
 
 generator.generator_model.summary()
@@ -343,30 +355,28 @@ except:
 training_losses = []
 validation_losses = []
 data_batches = []
-data_batches = []
 
 for i in range(len(training_stats)):
     training_loss, validation_loss, batch, batch_size = training_stats[i]
     training_losses.append(training_loss)
     validation_losses.append(validation_loss)
     data_batches.append(i)
-    data_batches.append(batch_size )
+
 for i in history.history['loss']:
     training_losses.append(i)
 for i in history.history['val_loss']:
     validation_losses.append(i)
-print( training_losses)
-for i in range(len(training_losses )):
-    data_batches.append(i + len(training_stats))
-    data_batches.append(batch_size )
+
 
 format_plot(1)
-plt.plot(training_losses, color='blue', label='Training')
-plt.plot(validation_losses, color='magenta', label='Validation')
+plt.plot(training_losses,data_batches, color='blue', label='Training')
+plt.plot(validation_losses,data_batches, color='magenta', label='Validation')
 plt.title('Model Loss')
 plt.ylabel('Unbinned Poisson LLH')
 plt.xlabel('Data Batch')
 plt.legend(loc='upper left')
-plt.savefig(model_save_location + model_name + 'model_loss')
+plt.savefig(model_save_location + model_name + 'model_loss', dpi=400)
 
 np.save(model_save_location + model_name + '/checkpoint/training_stats', [training_losses, validation_losses, data_batches, len(paths_train)] )
+
+

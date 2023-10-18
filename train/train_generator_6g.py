@@ -1,3 +1,5 @@
+#!/cvmfs/icecube.opensciencegrid.org/py3-v4.1.1/RHEL_7_x86_64/bin/python3 
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -171,6 +173,8 @@ def asymm_gaussian_6(x, A1, mu1, sigma1, r1, A2, mu2, sigma2, r2, A3, mu3, sigma
 
 tf_asymm_gaussian_6 = tf.function(asymm_gaussian_6)
 
+zero = tf.constant(0, dtype=tf.float64)
+one = tf.constant(1.0, dtype=tf.float64)
 
 class Unbinned_Pulse_Loss_Ordered(tf.keras.losses.Loss):
     def __init__(self):
@@ -189,9 +193,9 @@ class Unbinned_Pulse_Loss_Ordered(tf.keras.losses.Loss):
         
         flattened_pred_event_pulse_dist_transpose =  tf.expand_dims(tf.math.exp(tf.transpose(flattened_pred_event_pulse_dist)) ,  axis=1) # Transpose to [24, 86*60 * num_passed_events], EXPONENTIAL VARIABLE TRANSFORM, expand along last axis
         
-        amplitudes = flattened_pred_event_pulse_dist[:,::4] # Result is [num_passed_events * 60*86, all four amplitudes (every fourth parameter)]
+        amplitudes = flattened_pred_event_pulse_dist[:,::4] # Result is [num_passed_events * 60*86, all six amplitudes (every fourth parameter)]
         
-        amplitudes_reshape = tf.reshape(amplitudes, [num_passed_events, 86*60*4]) # Reshape to have [num_passed_events, 86*60*4 = every four amplitudes for DOM grouped together ]
+        amplitudes_reshape = tf.reshape(amplitudes, [num_passed_events, 86*60*6]) # Reshape to have [num_passed_events, 86*60*6 = every six amplitudes for DOM grouped together ]
         
         pred_charge_sum = tf.math.reduce_sum(tf.math.exp(amplitudes_reshape), 1) + 1.0e-7 # Total charge array summed for all passed events, [num_passed_events], EXPONENTIAL VARIABLE TRANSFORM
         
@@ -199,9 +203,9 @@ class Unbinned_Pulse_Loss_Ordered(tf.keras.losses.Loss):
         
         ordered_indices = tf.argsort(just_mus) # Get indices ordering the value of the mus
         
-        ordered_mus = tf.reshape( tf.gather(just_mus, ordered_indices, batch_dims=-1), [num_passed_events*86*60, 4]) # Mus are now in monotonic order
+        ordered_mus = tf.reshape( tf.gather(just_mus, ordered_indices, batch_dims=-1), [num_passed_events*86*60, 6]) # Mus are now in monotonic order
         
-        ordered_mus_transpose =  tf.expand_dims( tf.transpose( ordered_mus ) , axis=1) # Reshape ordered mus [4 mus, num_passed_events*86*60]
+        ordered_mus_transpose =  tf.expand_dims( tf.transpose( ordered_mus ) , axis=1) # Reshape ordered mus [6 mus, num_passed_events*86*60]
         
         
         flattened_real_event_pulse_times =   real_event_pulses[:,:1].merge_dims(0,1).merge_dims(0,1)  # Recall that data is transformed when read to make fitting easier. Here, flatten, leave last ragged dimension
@@ -228,7 +232,7 @@ class Unbinned_Pulse_Loss_Ordered(tf.keras.losses.Loss):
         # The below call evaluates the PDF Gaussian mixture model as a function of time and pulse parameters. Only entries for nonzero charges are considered.
 
 
-        pdf_vals = tf_asymm_gaussian_4( tf.boolean_mask( flattened_real_event_pulse_times.merge_dims(0,1) , where_zero_ragged ) ,
+        pdf_vals = tf_asymm_gaussian_6( tf.boolean_mask( flattened_real_event_pulse_times.merge_dims(0,1) , where_zero_ragged ) ,
                 tf.boolean_mask( (tf.transpose(flattened_pred_event_pulse_dist_transpose[0]) * ones_ragged ).merge_dims(0,1) , where_zero_ragged ),
                 tf.boolean_mask( (tf.transpose(ordered_mus_transpose[0]) * ones_ragged ).merge_dims(0,1) , where_zero_ragged ),
                  tf.boolean_mask( (tf.transpose(flattened_pred_event_pulse_dist_transpose[2]) * ones_ragged ).merge_dims(0,1) , where_zero_ragged ),
@@ -272,10 +276,10 @@ model_number_guassians = 6
 model_save_location = '/mnt/home/kochocki/egen_lite/saved_models/'
 model_name = str(sys.argv[1])
 
-num_local_layers = int(sys.argv[1])
-num_conv_layers = int(sys.argv[2])
-num_local_filters = int(sys.argv[3])
-num_conv_filters = int(sys.argv[4])
+num_local_layers = int(sys.argv[2])
+num_conv_layers = int(sys.argv[3])
+num_local_filters = int(sys.argv[4])
+num_conv_filters = int(sys.argv[5])
 
 # Autoencoder or variational autoencoder (would generate means, spreads to describe distributions in hidden layer )
 # These are ideally deep generative models (deep networks have many layers as opposed to filters)
@@ -300,17 +304,27 @@ class Generator(Model):
     
 try:
     generator = tf.keras.models.load_model(model_save_location + model_name)
+    print('Referenced existing model.')
 
 except:
     generator = Generator()
-    generator.compile(optimizer='adam', run_eagerly=True, loss=Unbinned_Pulse_Loss_Ordered()) #run_eagerly=True,
+    generator.compile(optimizer='adam', run_eagerly=False, loss=Unbinned_Pulse_Loss_Ordered()) #run_eagerly=True,
+    print('Creating new model.')
     
-    
+def scheduler(epoch, lr):
+    if epoch < 5: # Ideally we saw all data before decreasing, try this later.
+        print('Updating learning rate to:', lr)
+        return lr
+    else:
+        return lr * tf.math.exp(-0.1)
+        print('Updating learning rate to:', lr)
+
 callback = tf.keras.callbacks.ModelCheckpoint( model_save_location + model_name + '/checkpoint/cp-{epoch:04d}.ckpt', verbose=1, save_weights_only=True, save_freq='epoch')
+learning_callback = tf.keras.callbacks.LearningRateScheduler(scheduler)
 #backup_and_restore = tf.keras.callbacks.BackupAndRestore( model_save_location + model_name + '/checkpoint/cp-{epoch:04d}.ckpt', save_freq='epoch', delete_checkpoint=True,save_before_preemption=False)
 csv = tf.keras.callbacks.CSVLogger( model_save_location + model_name + '_log.csv', separator=',', append=True)
 generator.save_weights(model_save_location + model_name + '/checkpoint/cp-{epoch:04d}.ckpt'.format(epoch=0))
-
+    
     
 paths = glob.glob('/mnt/scratch/kochocki/ftp_electrons/set_*/' + 'record_*.tfrecords')
 n_files = len(paths)
@@ -325,7 +339,7 @@ for i in range(n_files):
 print(len(paths_validate), " records used for validation.")
 print(len(paths_train), " records used for training.")
 
-batch_size = 100 # This seems to just fit on the MSU HPCC dev node GPUs
+batch_size = 90 # 100 seems to just fit on the MSU HPCC dev node GPUs. Prone to failing
 shuffle_buffer_size = 5 * batch_size
 ds_train = tfrecords_reader_dataset(paths_train, batch_size=batch_size,
                                     shuffle_buffer_size=shuffle_buffer_size,
@@ -335,12 +349,13 @@ ds_test = tfrecords_reader_dataset(paths_validate, batch_size=batch_size,
                                     n_readers=16)
 
 
+print('Initial learning rate:', round(generator.optimizer.lr.numpy(), 5) )
 history = generator.fit(ds_train, validation_data=ds_test,
-                epochs=30,
-                steps_per_epoch = ((2000)//batch_size) , # * n_files_train,
-                validation_steps = ((2000)//batch_size),  #* n_files_test,
-                callbacks=[callback,csv] )
-
+                epochs=1, #20,
+                steps_per_epoch = ((1400000)//(batch_size/10.0)), # every iteration has batch sized number of events evaluated with loss
+                validation_steps = ((140000)//(batch_size/10.0)), # one real epoch would take a week on dev node. Here, each epoch is one fifth of a real one, divide by 10. Train for 20 epochs = 1 week
+                callbacks=[callback,csv,learning_callback] )#factor of ten speed boost on A100, V100.
+print('Final learning rate:', round(generator.optimizer.lr.numpy(), 5) )
 
 generator.generator_model.summary()
 
@@ -356,30 +371,27 @@ except:
 training_losses = []
 validation_losses = []
 data_batches = []
-data_batches = []
 
 for i in range(len(training_stats)):
     training_loss, validation_loss, batch, batch_size = training_stats[i]
     training_losses.append(training_loss)
     validation_losses.append(validation_loss)
     data_batches.append(i)
-    data_batches.append(batch_size )
+
 for i in history.history['loss']:
     training_losses.append(i)
 for i in history.history['val_loss']:
     validation_losses.append(i)
-print( training_losses)
-for i in range(len(training_losses )):
-    data_batches.append(i + len(training_stats))
-    data_batches.append(batch_size )
+
 
 format_plot(1)
-plt.plot(training_losses, color='blue', label='Training')
-plt.plot(validation_losses, color='magenta', label='Validation')
+plt.plot(training_losses,data_batches, color='blue', label='Training')
+plt.plot(validation_losses,data_batches, color='magenta', label='Validation')
 plt.title('Model Loss')
 plt.ylabel('Unbinned Poisson LLH')
 plt.xlabel('Data Batch')
 plt.legend(loc='upper left')
-plt.savefig(model_save_location + model_name + 'model_loss')
+plt.savefig(model_save_location + model_name + 'model_loss', dpi=400)
 
 np.save(model_save_location + model_name + '/checkpoint/training_stats', [training_losses, validation_losses, data_batches, len(paths_train)] )
+
